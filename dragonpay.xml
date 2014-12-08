@@ -2,8 +2,8 @@
 <install version="1.0" type="plugin" group="vmpayment" >
     <name>VMPAYMENT_DRAGONPAY</name>
     <creationDate>Sept 2014</creationDate>
-    <author>Lozatech Development Team</author>
-    <authorUrl>http://www.lozatech.com</authorUrl>
+    <author>Dennis Paler</author>
+    <authorUrl>http://www.shockwebstudio.com</authorUrl>
     <copyright>Copyright (C) 2014 All rights reserved.</copyright>
     <license>http://www.gnu.org/licenses/gpl-3.0.html GNU/GPL</license>
     <version>1.0</version>

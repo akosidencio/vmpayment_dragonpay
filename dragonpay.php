@@ -4,9 +4,7 @@ defined('_JEXEC') or die('Direct Access to ' . basename(__FILE__) . ' is not all
 
 /**
  *
- * upgrade by fadzli (technical@dragonpay.com)
- * this callback have IPN
- * callback URL : http://shoppingcarturl.com/index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived
+ * 
  */
 
 if (!class_exists('vmPSPlugin')) { require(JPATH_VM_PLUGINS . DS . 'vmpsplugin.php'); }
@@ -126,7 +124,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 		$this->storePSPluginInternalData($dbValues);
 		
 		// add spin image
-		$html.= '<form action="http://test.dragonpay.ph/Pay.aspx'.$method->dragonpay_merchantid.'/index.php" method="post" name="vm_dragonpay_form" >';
+		$html.= '<form action="'.$method->dragonpay_merchantid.'/index.php" method="post" name="vm_dragonpay_form" >';
 		$html.= '<input type="image" name="submit" alt="Click to pay with Dragonpay!" />';
 		foreach ($post_variables as $name => $value) 
 		{
@@ -182,19 +180,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 			return false;
 		}
 		
-		$vkey 			= $method->dragonpay_verifykey;
-		$nbcb 			= $payment_data['nbcb'];
-		$tranID 		= $payment_data['tranID'];
-		$status 		= $payment_data['status'];
-		$domain 		= $payment_data['domain'];
-		$amount 		= $payment_data['amount'];
-		$currency 		= $payment_data['currency'];
-		$appcode 		= $payment_data['appcode'];
-		$paydate 		= $payment_data['paydate'];
-		$skey 			= $payment_data['skey'];
 		
-		$key0 = md5( $tranID.$order_number.$status.$domain.$amount.$currency );
-		$key1 = md5( $paydate.$domain.$key0.$appcode.$vkey );
 				
 		if (!class_exists('VirtueMartCart'))		{ require(JPATH_VM_SITE . DS . 'helpers' . DS . 'cart.php');}
 		if (!class_exists('shopFunctionsF'))		{ require(JPATH_VM_SITE . DS . 'helpers' . DS . 'shopfunctionsf.php');}
