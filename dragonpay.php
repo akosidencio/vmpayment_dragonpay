@@ -5,6 +5,8 @@ defined('_JEXEC') or die('Direct Access to ' . basename(__FILE__) . ' is not all
 /**
  *
  * 
+ * this callback have IPN
+ * callback URL : http://example.com.ph/index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived
  */
 
 if (!class_exists('vmPSPlugin')) { require(JPATH_VM_PLUGINS . DS . 'vmpsplugin.php'); }
@@ -25,7 +27,9 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 			'dragonpay_verifykey' => array('', 'char'),
 			'status_pending' => array('', 'char'),
 			'status_success' => array('', 'char'),
-			'status_canceled' => array('', 'char')
+			'status_canceled' => array('', 'char'),
+                        'payment_logos' => array('', 'char'),
+			'logoimg' => array('', 'char')
 			);
 	
 		$this->setConfigParameterable($this->_configTableFieldName, $varsToPush);
@@ -92,8 +96,20 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 		$dbs->setQuery($countryquery);
 		$country = $dbs->loadResult();
 		
-		//vcode
-		$vcode = md5($totalInPaymentCurrency . $method->dragonpay_merchantid . $order['details']['BT']->order_number . $method->dragonpay_verifykey);
+		
+		$txnid = uniqid (true);
+		$merchant = $method->dragonpay_merchantid;
+		$amount = $totalInPaymentCurrency;
+		$ccy = $currency_code_3;
+        $description = 	"Order No: ".$order['details']['BT']->order_number;
+		$email = $address->email;
+        $password = $method->dragonpay_verifykey;
+
+		
+		//Digest
+		$digest_str = "$merchant:$txnid:$amount:$ccy:$description:$email:$password";
+		$digest = sha1($digest_str);
+		
 		
 		//mart name
 		$martquery = 'SELECT `vendor_store_name` FROM `#__virtuemart_vendors_en_gb` WHERE `virtuemart_vendor_id`="' . $method->virtuemart_vendor_id . '" ';
@@ -101,18 +117,15 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 		$dbs->setQuery($martquery);
 		$martname = $dbs->loadResult();
 		
-		//data need to send to dragonpay
+		//data need to send to dragonpay  //"email" => $address->email,
 		$post_variables = Array(
-			'vcode' => $vcode,
-			'bill_name' => $address->first_name." ".$address->last_name,
-			'bill_email' => $address->email,
-			'bill_mobile' => $address->phone_1,
-			'country' => $country,
-			'orderid' => $order['details']['BT']->order_number,
+			"merchantid" => $method->dragonpay_merchantid,
+			"txnid" => $txnid,
 			"amount" => $totalInPaymentCurrency,
-			"cur" => $currency_code_3,
-			"bill_desc" => "Buy products from ".$martname.". Order No: ".$order['details']['BT']->order_number,
-			"returnurl" => JROUTE::_(JURI::root() . 'index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived&pm=' . $order['details']['BT']->virtuemart_paymentmethod_id)
+			"ccy" => $currency_code_3,
+			"description" => "Order No: ".$order['details']['BT']->order_number,
+			"email" => $address->email,
+			"digest" => $digest
 			);
 				
 		// Prepare data that should be stored in the database
@@ -124,7 +137,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 		$this->storePSPluginInternalData($dbValues);
 		
 		// add spin image
-		$html.= '<form action="'.$method->dragonpay_merchantid.'/index.php" method="post" name="vm_dragonpay_form" >';
+		$html.= '<form action="https://gw.dragonpay.ph/Pay.aspx? method="get" name="vm_dragonpay_form" >';
 		$html.= '<input type="image" name="submit" alt="Click to pay with Dragonpay!" />';
 		foreach ($post_variables as $name => $value) 
 		{
@@ -157,7 +170,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 
     function plgVmOnPaymentResponseReceived( &$html) 
 	{
-		$payment_data = JRequest::get('post');
+		$payment_data = JRequest::get('get');
 		vmdebug('plgVmOnPaymentResponseReceived', $payment_data);
 		
 		$order_number 	= $payment_data['orderid'];
@@ -180,8 +193,13 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 			return false;
 		}
 		
+		$txnid 			= $txnid;
+		$refno          = $refno;
+		$status         = $status;
+		$message        = $messge;
+		$digest         = $digest;
 		
-				
+	    
 		if (!class_exists('VirtueMartCart'))		{ require(JPATH_VM_SITE . DS . 'helpers' . DS . 'cart.php');}
 		if (!class_exists('shopFunctionsF'))		{ require(JPATH_VM_SITE . DS . 'helpers' . DS . 'shopfunctionsf.php');}
 		if (!class_exists('VirtueMartModelOrders'))	{ require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );}
@@ -189,12 +207,12 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 		$virtuemart_order_id 	= VirtueMartModelOrders::getOrderIdByOrderNumber($order_number);
 		$payment_name 			= $this->renderPluginName($method);
 	
-		if( $skey != $key1 ) $status= -1; // invalid transaction
+		
 		
 		//normal return
 		if ($virtuemart_paymentmethod_ids)
 		{
-			if ( $status == "00" ) 
+			if ( $status == "S" ) 
 			{
 				if (!class_exists('VirtueMartCart'))
 					require(JPATH_VM_SITE . DS . 'helpers' . DS . 'cart.php');
@@ -368,10 +386,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 
     /**
      * Check if the payment conditions are fulfilled for this payment method
-     * @author: Valerie Isaksen
-     *
-     * @param $cart_prices: cart prices
-     * @param $payment
+    
      * @return true: if the conditions are fulfilled, false otherwise
      *
      */
@@ -396,7 +411,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 				$countries = $method->countries;
 			}
 		}
-		// probably did not gave his BT:ST address
+		
 		if (!is_array($address)) 
 		{
 			$address = array();
@@ -417,16 +432,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 		return false;
     }
 
-    /**
-     * We must reimplement this triggers for joomla 1.7
-     */
-
-    /**
-     * Create the table for this plugin if it does not yet exist.
-     * This functions checks if the called plugin is active one.
-     * When yes it is calling the standard method to create the tables
-     * @author Valérie Isaksen
-     *
+     /*
      */
     function plgVmOnStoreInstallPaymentPluginTable($jplugin_id) {
 
@@ -437,12 +443,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
      * This event is fired after the payment method has been selected. It can be used to store
      * additional payment info in the cart.
      *
-     * @author Max Milbers
-     * @author Valérie isaksen
-     *
-     * @param VirtueMartCart $cart: the actual cart
-     * @return null if the payment was not selected, true if the data is valid, error message if the data is not vlaid
-     *
+   
      */
     public function plgVmOnSelectCheckPayment(VirtueMartCart $cart) {
 	return $this->OnSelectCheck($cart);
@@ -466,14 +467,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 
     /*
      * plgVmonSelectedCalculatePricePayment
-     * Calculate the price (value, tax_id) of the selected method
-     * It is called by the calculator
-     * This function does NOT to be reimplemented. If not reimplemented, then the default values from this function are taken.
-     * @author Valerie Isaksen
-     * @cart: VirtueMartCart the current cart
-     * @cart_prices: array the new cart prices
-     * @return null if the method was not selected, false if the shiiping rate is not valid any more, true otherwise
-     *
+   
      *
      */
 
@@ -482,12 +476,7 @@ class plgVMPaymentDragonpay extends vmPSPlugin
     }
 
     /**
-     * plgVmOnCheckAutomaticSelectedPayment
-     * Checks how many plugins are available. If only one, the user will not have the choice. Enter edit_xxx page
-     * The plugin must check first if it is the correct type
-     * @author Valerie Isaksen
-     * @param VirtueMartCart cart: the cart object
-     * @return null if no plugin was found, 0 if more then one plugin was found,  virtuemart_xxx_id if only one plugin is found
+  o plugin was found, 0 if more then one plugin was found,  virtuemart_xxx_id if only one plugin is found
      *
      */
     function plgVmOnCheckAutomaticSelectedPayment(VirtueMartCart $cart, array $cart_prices = array()) {
@@ -496,93 +485,31 @@ class plgVMPaymentDragonpay extends vmPSPlugin
 
     /**
      * This method is fired when showing the order details in the frontend.
-     * It displays the method-specific data.
-     *
-     * @param integer $order_id The order ID
-     * @return mixed Null for methods that aren't active, text (HTML) otherwise
-     * @author Max Milbers
-     * @author Valerie Isaksen
+    
      */
     public function plgVmOnShowOrderFEPayment($virtuemart_order_id, $virtuemart_paymentmethod_id, &$payment_name) {
 	  $this->onShowOrderFE($virtuemart_order_id, $virtuemart_paymentmethod_id, $payment_name);
     }
 
     /**
-     * This event is fired during the checkout process. It can be used to validate the
-     * method data as entered by the user.
-     *
-     * @return boolean True when the data was valid, false otherwise. If the plugin is not activated, it should return null.
-     * @author Max Milbers
-
-      public function plgVmOnCheckoutCheckDataPayment($psType, VirtueMartCart $cart) {
+    ckoutCheckDataPayment($psType, VirtueMartCart $cart) {
       return null;
       }
      */
 
     /**
-     * This method is fired when showing when priting an Order
-     * It displays the the payment method-specific data.
-     *
-     * @param integer $_virtuemart_order_id The order ID
-     * @param integer $method_id  method used for this order
-     * @return mixed Null when for payment methods that were not selected, text (HTML) otherwise
-     * @author Valerie Isaksen
+   
      */
     function plgVmonShowOrderPrintPayment($order_number, $method_id) {
 	return $this->onShowOrderPrint($order_number, $method_id);
     }
 
     /**
-     * Save updated order data to the method specific table
-     *
-     * @param array $_formData Form data
-     * @return mixed, True on success, false on failures (the rest of the save-process will be
-     * skipped!), or null when this method is not actived.
-     * @author Oscar van Eijk
-
-      public function plgVmOnUpdateOrderPayment(  $_formData) {
-      return null;
-      }
-     */
-    /**
-     * Save updated orderline data to the method specific table
-     *
-     * @param array $_formData Form data
-     * @return mixed, True on success, false on failures (the rest of the save-process will be
-     * skipped!), or null when this method is not actived.
-     * @author Oscar van Eijk
-
-      public function plgVmOnUpdateOrderLine(  $_formData) {
-      return null;
-      }
-     */
-    /**
-     * plgVmOnEditOrderLineBE
-     * This method is fired when editing the order line details in the backend.
-     * It can be used to add line specific package codes
-     *
-     * @param integer $_orderId The order ID
-     * @param integer $_lineId
-     * @return mixed Null for method that aren't active, text (HTML) otherwise
-     * @author Oscar van Eijk
-
-      public function plgVmOnEditOrderLineBE(  $_orderId, $_lineId) {
-      return null;
-      }
+   
      */
 
     /**
-     * This method is fired when showing the order details in the frontend, for every orderline.
-     * It can be used to display line specific package codes, e.g. with a link to external tracking and
-     * tracing systems
-     *
-     * @param integer $_orderId The order ID
-     * @param integer $_lineId
-     * @return mixed Null for method that aren't active, text (HTML) otherwise
-     * @author Oscar van Eijk
-
-      public function plgVmOnShowOrderLineFE(  $_orderId, $_lineId) {
-      return null;
+   
       }
      */
     function plgVmDeclarePluginParamsPayment($name, $id, &$data) {
